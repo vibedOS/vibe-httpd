@@ -7,6 +7,7 @@ cargo build --release
 target/x86_64-unknown-linux-gnu/release/vibe-httpd 8080
 ```
 
-The first version serves `/`, `/health`, and bounded 4 KiB request headers.
+It serves `/` and `/health` through two restartable workers with bounded
+4 KiB request headers.
 
 MIT licensed.

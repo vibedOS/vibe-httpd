@@ -5,9 +5,11 @@
 
 use core::panic::PanicInfo;
 use vibe_rt::{
-    Args, Env, Errno, Result, accept, close, entry, eprintln, read, tcp_listener, write_all,
+    Args, Env, Errno, Fork, Result, accept, close, entry, eprintln, fork, getpid, getppid, read,
+    sleep, tcp_listener, terminate_with_parent, wait_any, write_all,
 };
 
+const WORKER_COUNT: usize = 2;
 const INDEX: &[u8] = b"HTTP/1.1 200 OK\r\n\
 Content-Type: text/plain; charset=utf-8\r\n\
 Content-Length: 23\r\n\
@@ -69,7 +71,50 @@ fn main(mut args: Args<'_>, _env: Env<'_>) -> i32 {
     };
     vibe_rt::println!("vibe-httpd 0.1 listening on 0.0.0.0:{port}");
 
-    // ponytail: one connection at a time is enough for bring-up; add workers when concurrency matters.
+    let master = getpid();
+    let mut workers = [None; WORKER_COUNT];
+    loop {
+        for worker in &mut workers {
+            if worker.is_none() {
+                *worker = spawn_worker(listener, master);
+            }
+        }
+        if workers.iter().any(Option::is_none) {
+            sleep(1);
+            continue;
+        }
+
+        match wait_any() {
+            Ok((pid, _status)) => {
+                if let Some(worker) = workers.iter_mut().find(|worker| **worker == Some(pid)) {
+                    *worker = None;
+                }
+            }
+            Err(error) => {
+                eprintln!("vibe-httpd: wait failed: errno {}", error.0);
+                sleep(1);
+            }
+        }
+    }
+}
+
+fn spawn_worker(listener: i32, master: i32) -> Option<i32> {
+    match fork() {
+        Ok(Fork::Parent(pid)) => Some(pid),
+        Ok(Fork::Child) => {
+            if terminate_with_parent().is_err() || getppid() != master {
+                vibe_rt::exit(1);
+            }
+            worker(listener)
+        }
+        Err(error) => {
+            eprintln!("vibe-httpd: fork failed: errno {}", error.0);
+            None
+        }
+    }
+}
+
+fn worker(listener: i32) -> ! {
     loop {
         match accept(listener) {
             Ok(connection) => {
