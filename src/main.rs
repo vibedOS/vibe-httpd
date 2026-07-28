@@ -22,7 +22,7 @@ const NOT_FOUND: Response = Response::new(
 const METHOD_NOT_ALLOWED: Response = Response {
     status: b"405 Method Not Allowed",
     content_type: b"text/plain; charset=utf-8",
-    extra_header: b"Allow: GET\r\n",
+    extra_header: b"Allow: GET, HEAD\r\n",
     body: b"method not allowed\n",
 };
 const BAD_REQUEST: Response = Response::new(
@@ -157,14 +157,16 @@ fn serve(connection: i32, index: &CStr) {
         let length = match read_request(connection, &mut request, &mut buffered) {
             Ok(length) => length,
             Err(_) => {
-                send_response(connection, &BAD_REQUEST, false);
+                send_response(connection, &BAD_REQUEST, false, true);
                 return;
             }
         };
         let keep_alive = request_keep_alive(&request[..length]) && count + 1 < MAX_REQUESTS;
         match route(&request[..length]) {
-            Route::Index => serve_index(connection, index, keep_alive),
-            Route::Fixed(response) => send_response(connection, response, keep_alive),
+            Route::Index(send_body) => serve_index(connection, index, keep_alive, send_body),
+            Route::Fixed(response, send_body) => {
+                send_response(connection, response, keep_alive, send_body)
+            }
         }
 
         request.copy_within(length..buffered, 0);
@@ -195,19 +197,22 @@ fn read_request(connection: i32, buffer: &mut [u8], length: &mut usize) -> Resul
 }
 
 enum Route {
-    Index,
-    Fixed(&'static Response),
+    Index(bool),
+    Fixed(&'static Response, bool),
 }
 
 fn route(request: &[u8]) -> Route {
     let Some(end) = request.windows(2).position(|bytes| bytes == b"\r\n") else {
-        return Route::Fixed(&BAD_REQUEST);
+        return Route::Fixed(&BAD_REQUEST, true);
     };
     match &request[..end] {
-        b"GET / HTTP/1.1" | b"GET / HTTP/1.0" => Route::Index,
-        b"GET /health HTTP/1.1" | b"GET /health HTTP/1.0" => Route::Fixed(&HEALTH),
-        line if line.starts_with(b"GET ") => Route::Fixed(&NOT_FOUND),
-        _ => Route::Fixed(&METHOD_NOT_ALLOWED),
+        b"GET / HTTP/1.1" | b"GET / HTTP/1.0" => Route::Index(true),
+        b"HEAD / HTTP/1.1" | b"HEAD / HTTP/1.0" => Route::Index(false),
+        b"GET /health HTTP/1.1" | b"GET /health HTTP/1.0" => Route::Fixed(&HEALTH, true),
+        b"HEAD /health HTTP/1.1" | b"HEAD /health HTTP/1.0" => Route::Fixed(&HEALTH, false),
+        line if line.starts_with(b"GET ") => Route::Fixed(&NOT_FOUND, true),
+        line if line.starts_with(b"HEAD ") => Route::Fixed(&NOT_FOUND, false),
+        _ => Route::Fixed(&METHOD_NOT_ALLOWED, true),
     }
 }
 
@@ -246,12 +251,12 @@ fn trim_ascii(mut value: &[u8]) -> &[u8] {
     value
 }
 
-fn serve_index(connection: i32, path: &CStr, keep_alive: bool) {
+fn serve_index(connection: i32, path: &CStr, keep_alive: bool, send_body: bool) {
     let file = match open_read(path) {
         Ok(file) => file,
         Err(error) => {
             eprintln!("vibe-httpd: open index failed: errno {}", error.0);
-            send_response(connection, &NOT_FOUND, keep_alive);
+            send_response(connection, &NOT_FOUND, keep_alive, send_body);
             return;
         }
     };
@@ -263,7 +268,7 @@ fn serve_index(connection: i32, path: &CStr, keep_alive: bool) {
             let mut extra = [0_u8; 1];
             if read(file as usize, &mut extra) != Ok(0) {
                 let _ = close(file);
-                send_response(connection, &SERVER_ERROR, keep_alive);
+                send_response(connection, &SERVER_ERROR, keep_alive, send_body);
                 return;
             }
             break;
@@ -274,7 +279,7 @@ fn serve_index(connection: i32, path: &CStr, keep_alive: bool) {
             Err(error) => {
                 eprintln!("vibe-httpd: read index failed: errno {}", error.0);
                 let _ = close(file);
-                send_response(connection, &SERVER_ERROR, keep_alive);
+                send_response(connection, &SERVER_ERROR, keep_alive, send_body);
                 return;
             }
         }
@@ -288,10 +293,11 @@ fn serve_index(connection: i32, path: &CStr, keep_alive: bool) {
         b"",
         &content[..length],
         keep_alive,
+        send_body,
     );
 }
 
-fn send_response(connection: i32, response: &Response, keep_alive: bool) {
+fn send_response(connection: i32, response: &Response, keep_alive: bool, send_body: bool) {
     send_parts(
         connection,
         response.status,
@@ -299,6 +305,7 @@ fn send_response(connection: i32, response: &Response, keep_alive: bool) {
         response.extra_header,
         response.body,
         keep_alive,
+        send_body,
     );
 }
 
@@ -309,6 +316,7 @@ fn send_parts(
     extra_header: &[u8],
     body: &[u8],
     keep_alive: bool,
+    send_body: bool,
 ) {
     let connection = connection as usize;
     let _ = write_all(connection, b"HTTP/1.1 ");
@@ -325,7 +333,9 @@ fn send_parts(
         if keep_alive { b"keep-alive" } else { b"close" },
     );
     let _ = write_all(connection, b"\r\nServer: vibe-httpd/0.1\r\n\r\n");
-    let _ = write_all(connection, body);
+    if send_body {
+        let _ = write_all(connection, body);
+    }
 }
 
 fn write_number(fd: usize, mut value: usize) {
