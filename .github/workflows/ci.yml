@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install 1.94.0 --profile minimal --component clippy,rustfmt
+      - run: cargo +1.94.0 fmt -- --check
+      - run: cargo +1.94.0 clippy --release -- -D warnings
+      - run: cargo +1.94.0 build --release
+      - run: |
+          ! readelf -l target/x86_64-unknown-linux-gnu/release/vibe-httpd | grep -q INTERP
+          ! readelf -d target/x86_64-unknown-linux-gnu/release/vibe-httpd | grep -q NEEDED
+          target/x86_64-unknown-linux-gnu/release/vibe-httpd 18080 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in 1 2 3 4 5; do
+            response=$(curl --fail --silent http://127.0.0.1:18080/health) && break
+            sleep 1
+          done
+          test "$response" = "ok"
