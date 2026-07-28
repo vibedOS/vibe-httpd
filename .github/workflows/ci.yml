@@ -29,6 +29,10 @@ jobs:
           done
           test "$response" = "ok"
           test "$(curl --fail --silent http://127.0.0.1:18080/)" = "disk-backed index"
+          curl --fail --silent --trace-ascii /tmp/vibe-httpd-trace \
+            http://127.0.0.1:18080/health \
+            http://127.0.0.1:18080/health >/dev/null
+          test "$(grep -c 'Trying 127.0.0.1' /tmp/vibe-httpd-trace)" = 1
           kill "$server_pid"
           wait "$server_pid" || true
           stopped=
