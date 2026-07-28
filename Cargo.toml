@@ -8,7 +8,7 @@ description = "The vibeOS HTTP server"
 repository = "https://github.com/vibedOS/vibe-httpd"
 
 [dependencies]
-vibe-rt = { git = "https://github.com/vibedOS/vibe-rt", rev = "e066720e6fffa26bba658d49c7911894c9befa59" }
+vibe-rt = { git = "https://github.com/vibedOS/vibe-rt", rev = "1758e752bbc1d68213223322ada551d29f9f61fc" }
 
 [profile.dev]
 panic = "abort"

@@ -8,6 +8,7 @@ target/x86_64-unknown-linux-gnu/release/vibe-httpd 8080 ./index.html
 ```
 
 It serves `/` and `/health` through two restartable workers with bounded
-4 KiB request headers. The index file is capped at 16 KiB.
+4 KiB request headers. Connections time out after five idle seconds and can
+carry up to 16 requests. The index file is capped at 16 KiB.
 
 MIT licensed.
