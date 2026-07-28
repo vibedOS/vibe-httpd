@@ -27,3 +27,15 @@ jobs:
             sleep 1
           done
           test "$response" = "ok"
+          kill "$server_pid"
+          wait "$server_pid" || true
+          stopped=
+          for attempt in 1 2 3 4 5; do
+            if ! curl --max-time 1 --silent http://127.0.0.1:18080/health >/dev/null; then
+              stopped=yes
+              break
+            fi
+            sleep 1
+          done
+          test "$stopped" = "yes"
+          trap - EXIT
