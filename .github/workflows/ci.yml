@@ -29,6 +29,7 @@ jobs:
           done
           test "$response" = "ok"
           test "$(curl --fail --silent http://127.0.0.1:18080/)" = "disk-backed index"
+          test "$(curl --fail --silent --head http://127.0.0.1:18080/health | tr -d '\r' | grep -c '^Content-Length: 3$')" = 1
           curl --fail --silent --trace-ascii /tmp/vibe-httpd-trace \
             http://127.0.0.1:18080/health \
             http://127.0.0.1:18080/health >/dev/null
