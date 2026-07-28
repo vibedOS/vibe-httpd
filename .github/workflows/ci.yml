@@ -19,7 +19,8 @@ jobs:
       - run: |
           ! readelf -l target/x86_64-unknown-linux-gnu/release/vibe-httpd | grep -q INTERP
           ! readelf -d target/x86_64-unknown-linux-gnu/release/vibe-httpd | grep -q NEEDED
-          target/x86_64-unknown-linux-gnu/release/vibe-httpd 18080 &
+          printf 'disk-backed index\n' > /tmp/vibe-httpd-index
+          target/x86_64-unknown-linux-gnu/release/vibe-httpd 18080 /tmp/vibe-httpd-index &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for attempt in 1 2 3 4 5; do
@@ -27,6 +28,7 @@ jobs:
             sleep 1
           done
           test "$response" = "ok"
+          test "$(curl --fail --silent http://127.0.0.1:18080/)" = "disk-backed index"
           kill "$server_pid"
           wait "$server_pid" || true
           stopped=

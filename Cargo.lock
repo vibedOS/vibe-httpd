@@ -12,4 +12,4 @@ dependencies = [
 [[package]]
 name = "vibe-rt"
 version = "0.1.0"
-source = "git+https://github.com/vibedOS/vibe-rt?rev=0b60a80c0946fb2929a77d9c2c0541e98cee198c#0b60a80c0946fb2929a77d9c2c0541e98cee198c"
+source = "git+https://github.com/vibedOS/vibe-rt?rev=e066720e6fffa26bba658d49c7911894c9befa59#e066720e6fffa26bba658d49c7911894c9befa59"
